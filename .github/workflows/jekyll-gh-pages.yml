@@ -1,51 +1,125 @@
-# Sample workflow for building and deploying a Jekyll site to GitHub Pages
-name: Deploy Jekyll with GitHub Pages dependencies preinstalled
 
-on:
-  # Runs on pushes targeting the default branch
-  push:
-    branches: ["main"]
 
-  # Allows you to run this workflow manually from the Actions tab
-  workflow_dispatch:
+import streamlit as st
+import preprocessor
+import helper
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
-permissions:
-  contents: read
-  pages: write
-  id-token: write
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
-concurrency:
-  group: "pages"
-  cancel-in-progress: false
+st.sidebar.title("Whatsapp Chat Analyzer")
 
-jobs:
-  # Build job
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-      - name: Build with Jekyll
-        uses: actions/jekyll-build-pages@v1
-        with:
-          source: ./
-          destination: ./_site
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+uploaded_file = st.sidebar.file_uploader("Choose a file")
+if uploaded_file is not None:
+    # Read file as text
+    bytes_data = uploaded_file.getvalue()
+    data = bytes_data.decode("utf-8")
 
-  # Deployment job
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+    df = preprocessor.preprocess(data)
+
+
+    # Fetch unique users
+    user_list = df['user'].unique().tolist()
+    if 'group_notification' in user_list:
+        user_list.remove('group_notification')
+    user_list.sort()
+    user_list.insert(0, "Overall")
+
+    selected_user = st.sidebar.selectbox("Show analysis w.r.t", user_list)
+
+    if st.sidebar.button("Show Analysis"):
+        num_messages, words, num_media_messages, num_links = helper.fetch_stats(selected_user, df)
+        st.title("Top statistics")
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            st.header("Total Messages")
+            st.title(num_messages)
+
+        with col2:
+            st.header("Total Words")
+            st.title(words)
+
+        with col3:
+            st.header("Media Shared")
+            st.title(num_media_messages)
+
+        with col4:
+            st.header("Links Shared")
+            st.title(num_links)
+
+        #monthly timeline
+        st.title("Monthly timeline")
+        timeline = helper.monthly_timeline(selected_user,df)
+        fig,ax = plt.subplots()
+        ax.plot(timeline['time'], timeline['message'],color='green')
+        plt.xticks(rotation='vertical')
+        st.pyplot(fig)
+
+        #daily timeline
+        st.title("Daily timeline")
+        daily_timeline = helper.daily_timeline(selected_user, df)
+        fig, ax = plt.subplots()
+        ax.plot(daily_timeline['only_date'], daily_timeline['message'], color='black')
+        plt.xticks(rotation='vertical')
+        st.pyplot(fig)
+
+        #activity map
+        st.title("Activity map")
+        col1,col2 = st.columns(2)
+        with col1:
+            st.header("Most busy day")
+            busy_day = helper.week_activity_map(selected_user,df)
+            fig,ax = plt.subplots()
+            ax.bar(busy_day.index,busy_day.values)
+            plt.xticks(rotation='vertical')
+            st.pyplot(fig)
+
+        with col2:
+            st.header("Most busy month")
+            busy_month = helper.month_activity_map(selected_user, df)
+            fig, ax = plt.subplots()
+            ax.bar(busy_month.index, busy_month.values,color='orange')
+            plt.xticks(rotation='vertical')
+            st.pyplot(fig)
+
+            user_heatmap = helper.activity_heatmap(selected_user, df)
+            fig, ax = plt.subplots()
+            sns.heatmap(user_heatmap, ax=ax)
+            st.pyplot(fig)
+
+            # Word Cloud
+            st.title("Wordcloud")
+            df_wc = helper.create_wordcloud(selected_user, df)
+            fig, ax = plt.subplots()
+            ax.imshow(df_wc)
+            ax.axis("off")  # Hide axes
+            st.pyplot(fig)
+
+            # Most Common Words
+            st.title("Most Common Words")
+            most_common_df = helper.most_common_words(selected_user, df)
+            fig, ax = plt.subplots()
+            ax.bar(most_common_df[0], most_common_df[1])
+            plt.xticks(rotation='vertical')
+            st.pyplot(fig)
+
+            #emoji analysis
+            emoji_df =helper.emoji_helper(selected_user,df)
+            st.title("Emoji Analyses")
+            col1,col2 =st.columns(2)
+            with col1:
+                st.dataframe(emoji_df)
+                with col2:
+                    fig,ax = plt.subplots()
+                    ax.pie(emoji_df[1],labels=emoji_df[0])
+                    st.pyplot(fig)
+
+
+
+
+
+
+
+
